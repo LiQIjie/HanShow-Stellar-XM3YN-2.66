@@ -26,7 +26,18 @@ extern settings_struct settings;
 
 _attribute_ram_code_ void user_init_normal(void)
 {                            // this will get executed one time after power up
-    random_generator_init(); // must
+    /*
+     * Normal initialization executed once after a cold power-up.
+     * - Initialize hardware/random number generator required by SDK
+     * - Initialize timekeeping used for periodic tasks and display updates
+     * - Initialize BLE stack and application-level BLE services
+     * - Initialize flash storage for persistent settings and data
+     * - Initialize NFC if present (used for configuration or wakeup)
+     *
+     * Note: example calls to draw a TIFF or display a raw image are left commented
+     * as they are only used for debugging or initial visual verification.
+     */
+    random_generator_init(); // required by TLSR SDK
     init_time();
     init_ble();
     init_flash();
@@ -38,6 +49,13 @@ _attribute_ram_code_ void user_init_normal(void)
 
 _attribute_ram_code_ void user_init_deepRetn(void)
 { // after sleep this will get executed
+    /*
+     * Initialization executed after a deep retention wakeup (wake from deep sleep
+     * where some RAM/retention state is preserved but peripherals need re-init).
+     * - Re-initialize basic MCU/LL subsystems required after retention
+     * - Restore RF transmit power to a safe default
+     * - Recover BLE link-layer retention state so BLE can resume
+     */
     blc_ll_initBasicMCU();
     rf_set_power_level_index(RF_POWER_P3p01dBm);
     blc_ll_recoverDeepRetention();
@@ -45,19 +63,53 @@ _attribute_ram_code_ void user_init_deepRetn(void)
 
 _attribute_ram_code_ void main_loop(void)
 {
+    /*
+     * Run the TLSR SDK main loop.
+     * - Handles BLE link-layer processing and other SDK-internal periodic work.
+     */
     blt_sdk_main_loop();
+
+    /*
+     * Update time base and handle timer callbacks.
+     * - Keeps software timers and timekeeping updated for scheduled tasks.
+     */
     handler_time();
 
+    /*
+     * Periodic tasks (triggered by Timer_CH_1 at a coarse interval, e.g. 30s):
+     * - Sample battery voltage and update the global battery state
+     * - Sample device/ambient temperature
+     * - Update BLE advertising payload with the latest sensor values so
+     *   phones or scanners can read them without a connection
+     * - Send battery and temperature to connected BLE peers via notifications
+     */
     if (time_reached_period(Timer_CH_1, 30))
     {
+        /* Read battery voltage (mV) and convert to percentage level. */
         battery_mv = get_battery_mv();
         battery_level = get_battery_level(battery_mv);
+
+        /* Read temperature in degrees Celsius. */
         temperature = get_temperature_c();
+
+        /*
+         * Update advertising data and notify connected peers.
+         * Note: advertising temperature uses EPD_read_temp() * 10 which
+         * keeps one decimal place by scaling. This may differ from the
+         * temperature source used in "temperature" above depending on
+         * hardware and driver implementations.
+         */
         set_adv_data(EPD_read_temp() * 10, battery_level, battery_mv);
         ble_send_battery(battery_level);
         ble_send_temp(EPD_read_temp() * 10);
     }
 
+    /*
+     * EPD display refresh based on time: update EPD (electronic paper display) every minute.
+     * - Enter a branch once per minute (compare current_minute with minute_refresh)
+     * - On the hour, trigger a full/more intensive refresh (last parameter 1 indicates full refresh)
+     * - On non-hourly minute updates, trigger a partial or less intensive refresh (last parameter 0)
+     */
     uint8_t current_minute = (get_time() / 60) % 60;
     if (current_minute != minute_refresh)
     {
@@ -65,15 +117,24 @@ _attribute_ram_code_ void main_loop(void)
         uint8_t current_hour = ((get_time() / 60) / 60) % 24;
         if (current_hour != hour_refresh)
         {
+            /* On the hour: perform a more comprehensive screen update (e.g., full refresh) */
             hour_refresh = current_hour;
             epd_display(get_time(), battery_mv, temperature, 1);
         }
         else
         {
+            /* On non-hourly minute updates: perform a partial or less intensive screen update to save power and reduce wear. */
             epd_display(get_time(), battery_mv, temperature, 0);
         }
     }
 
+    /*
+     * LED status indicator: blink briefly on a fast timer to indicate
+     * connection state.
+     * - Color index 3 indicates BLE connected (example: connected LED)
+     * - Color index 2 indicates not connected (advertising/idle)
+     * The LED is lit for a very short time (1 ms) to provide a blink cue.
+     */
     if (time_reached_period(Timer_CH_0, 10))
     {
         if (ble_get_connected())
@@ -84,14 +145,29 @@ _attribute_ram_code_ void main_loop(void)
         set_led_color(0);
     }
 
+    /*
+     * Manage wakeup and power handling when EPD updates are active.
+     * - If an EPD update is in progress (epd_state_handler() returns true),
+     *   configure the EPD busy GPIO as an external wakeup source and disable
+     *   deep suspend so the CPU remains available until the display
+     *   operation completes.
+     * - If no EPD update is active, yield control to the SDK power manager
+     *   so the system can enter appropriate low-power states (blt_pm_proc()).
+     */
     if (epd_state_handler()) // if epd_update is ongoing enable gpio wakeup to put the display to sleep as fast as possible
     {
+        /* Configure the EPD busy pin as an external wakeup source.
+         * cpu_set_gpio_wakeup(pin, polarity, enable)
+         */
         cpu_set_gpio_wakeup(EPD_BUSY, 1, 1);
+        /* Select external pad (GPIO) as the wakeup source. */
         bls_pm_setWakeupSource(PM_WAKEUP_PAD);
+        /* Disable system suspend to keep CPU active until EPD operation completes. */
         bls_pm_setSuspendMask(SUSPEND_DISABLE);
     }
     else
     {
+        /* Delegate to SDK power management for normal low-power processing (sleep/timer wakeup). */
         blt_pm_proc();
     }
 }

@@ -3,61 +3,68 @@
 #include "main.h"
 #include "epd.h"
 #include "epd_spi.h"
-#include "epd_bwr_213.h"
+#include "epd_bwy_266.h"
 #include "drivers.h"
 #include "stack/ble/ble.h"
 
-// SSD1675 mixed with SSD1680 EPD Controller
+// SSD1675/SSD1680 compatible EPD Controller - BWY 2.66" implementation
+// Target panels: DEP50286YN9800F1HP-H0 / 0201DP-0351-01-10557-W (FPC7510 = DKE 2.66 BWY)
 
-#define BWR_213_Len 50
-uint8_t LUT_bwr_213_part[] = {
-
+#define BWY_266_Len 50
+uint8_t LUT_BWY_266_full[153] =
+{
 0x40, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 0x40, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 
-BWR_213_Len, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
-0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
-0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
-0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
-0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
-0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
-0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
-0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
-0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
-0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
-0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
-0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
-0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 
-0x00, 0x00, 0x00, 
-
+BWY_266_Len, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x22, 0x22, 0x22, 0x22, 0x22, 0x22,
+0x00, 0x00, 0x00,
 };
 
-#define EPD_BWR_213_test_pattern 0xA5
-_attribute_ram_code_ uint8_t EPD_BWR_213_detect(void)
+#define EPD_BWY_266_test_pattern 0xA5
+_attribute_ram_code_ uint8_t EPD_BWY_266_detect(void)
 {
+    /*
+     * SSD1680 detect for 2.66" BWY panel (152x296).
+     * Use LUT write/readback to verify the controller has a 153-byte LUT.
+     */
+
     // SW Reset
     EPD_WriteCmd(0x12);
     WaitMs(10);
 
+    // Write a test pattern into the LUT register (0x32)
     EPD_WriteCmd(0x32);
     int i;
-    for (i = 0; i < 153; i++)// This model has a 159 bytes LUT storage so we test for that
+    for (i = 0; i < 153; i++)
     {
-        EPD_WriteData(EPD_BWR_213_test_pattern);
+        EPD_WriteData(EPD_BWY_266_test_pattern);
     }
+    // Read back via LUT readback register (0x33)
     EPD_WriteCmd(0x33);
     for (i = 0; i < 153; i++)
     {
-        if(EPD_SPI_read() != EPD_BWR_213_test_pattern)
-    return 0;
-}
+        if (EPD_SPI_read() != EPD_BWY_266_test_pattern)
+            return 0;
+    }
     return 1;
 }
 
-_attribute_ram_code_ uint8_t EPD_BWR_213_read_temp(void)
+_attribute_ram_code_ uint8_t EPD_BWY_266_read_temp(void)
 {
     uint8_t epd_temperature = 0 ;
     
@@ -72,6 +79,11 @@ _attribute_ram_code_ uint8_t EPD_BWR_213_read_temp(void)
     // Set Digital Block control
     EPD_WriteCmd(0x7E);
     EPD_WriteData(0x3B);
+    
+    // ACVCOM Setting (SSD1680-style)
+    EPD_WriteCmd(0x2B);
+    EPD_WriteData(0x04);
+    EPD_WriteData(0x63);
 
     // Booster soft start
     EPD_WriteCmd(0x0C);
@@ -80,48 +92,43 @@ _attribute_ram_code_ uint8_t EPD_BWR_213_read_temp(void)
     EPD_WriteData(0x96);
     EPD_WriteData(0x0F);
 
-    // Driver output control
+    // Driver output control: 296 lines (0x0127)
     EPD_WriteCmd(0x01);
-    EPD_WriteData(0x28);
-    EPD_WriteData(0x01);
+    EPD_WriteData(0x27);    // GD[7:0]
+    EPD_WriteData(0x01);    // GD[8], SM, TB
     EPD_WriteData(0x01);
 
     // Data entry mode setting
     EPD_WriteCmd(0x11);
     EPD_WriteData(0x01);
 
-    // Set RAM X- Address Start/End
-    EPD_WriteCmd(0x44);
-    EPD_WriteData(0x00);
-    EPD_WriteData(0x0F);
-
-    // Set RAM Y- Address Start/End
-    EPD_WriteCmd(0x45);
-    EPD_WriteData(0x28);
-    EPD_WriteData(0x01);
-    EPD_WriteData(0x2E);
-    EPD_WriteData(0x00);
-
-    // Border waveform control
-    EPD_WriteCmd(0x3C);
-    EPD_WriteData(0x05);
-
-    // Display update control
-    EPD_WriteCmd(0x21);
-    EPD_WriteData(0x00);
-    EPD_WriteData(0x80);
-
     // Temperature sensor control
     EPD_WriteCmd(0x18);
     EPD_WriteData(0x80);
 
-    // Display update control
+    // Set RAM X- Address Start/End (0..18 => 19 bytes => 152 pixels)
+    EPD_WriteCmd(0x44);
+    EPD_WriteData(0x00);
+    EPD_WriteData(0x12);
+
+    // Set RAM Y- Address Start/End (0..295)
+    EPD_WriteCmd(0x45);
+    EPD_WriteData(0x00);
+    EPD_WriteData(0x00);
+    EPD_WriteData(0x27);
+    EPD_WriteData(0x01);
+
+    // Border waveform control
+    EPD_WriteCmd(0x3C);
+    EPD_WriteData(0x01);
+
+    // Display update control (sequence to start temperature read)
     EPD_WriteCmd(0x22);
     EPD_WriteData(0xB1);
-    
+
     // Master Activation
     EPD_WriteCmd(0x20);
-
+    
     EPD_CheckStatus_inverted(100);
 
     // Temperature sensor read from register
@@ -130,6 +137,19 @@ _attribute_ram_code_ uint8_t EPD_BWR_213_read_temp(void)
     EPD_SPI_read();
 
     WaitMs(5);
+
+    // Display update control (restore/update)
+    EPD_WriteCmd(0x22);
+    EPD_WriteData(0xB1);
+    
+    // Master Activation
+    EPD_WriteCmd(0x20);
+
+    EPD_CheckStatus_inverted(100);
+    
+    // Display update control
+    EPD_WriteCmd(0x21);
+    EPD_WriteData(0x03);
     
     // deep sleep
     EPD_WriteCmd(0x10);
@@ -138,7 +158,7 @@ _attribute_ram_code_ uint8_t EPD_BWR_213_read_temp(void)
     return epd_temperature;
 }
 
-_attribute_ram_code_ uint8_t EPD_BWR_213_Display(unsigned char *image, int size, uint8_t full_or_partial)
+_attribute_ram_code_ uint8_t EPD_BWY_266_Display(unsigned char *image, int size, uint8_t full_or_partial)
 {    
     uint8_t epd_temperature = 0 ;
     
@@ -153,6 +173,11 @@ _attribute_ram_code_ uint8_t EPD_BWR_213_Display(unsigned char *image, int size,
     // Set Digital Block control
     EPD_WriteCmd(0x7E);
     EPD_WriteData(0x3B);
+    
+    // ACVCOM Setting
+    EPD_WriteCmd(0x2B);
+    EPD_WriteData(0x04);
+    EPD_WriteData(0x63);
 
     // Booster soft start
     EPD_WriteCmd(0x0C);
@@ -161,31 +186,35 @@ _attribute_ram_code_ uint8_t EPD_BWR_213_Display(unsigned char *image, int size,
     EPD_WriteData(0x96);
     EPD_WriteData(0x0F);
 
-    // Driver output control
+    // Driver output control: 296 lines (0x0127)
     EPD_WriteCmd(0x01);
-    EPD_WriteData(0x28);
-    EPD_WriteData(0x01);
+    EPD_WriteData(0x27);    // GD[7:0]
+    EPD_WriteData(0x01);    // GD[8], SM, TB
     EPD_WriteData(0x01);
 
     // Data entry mode setting
     EPD_WriteCmd(0x11);
     EPD_WriteData(0x01);
 
-    // Set RAM X- Address Start/End
+    // Temperature sensor control
+    EPD_WriteCmd(0x18);
+    EPD_WriteData(0x80);
+
+    // Set RAM X- Address Start/End (0..18 => 19 bytes => 152 pixels)
     EPD_WriteCmd(0x44);
     EPD_WriteData(0x00);
-    EPD_WriteData(0x0F);
+    EPD_WriteData(0x12);
 
-    // Set RAM Y- Address Start/End
+    // Set RAM Y- Address Start/End (0..295)
     EPD_WriteCmd(0x45);
-    EPD_WriteData(0x28);
-    EPD_WriteData(0x01);
-    EPD_WriteData(0x2E);
     EPD_WriteData(0x00);
+    EPD_WriteData(0x00);
+    EPD_WriteData(0x27);
+    EPD_WriteData(0x01);
 
     // Border waveform control
     EPD_WriteCmd(0x3C);
-    EPD_WriteData(0x05);
+    EPD_WriteData(0x01);
 
     // Display update control
     EPD_WriteCmd(0x21);
@@ -199,7 +228,7 @@ _attribute_ram_code_ uint8_t EPD_BWR_213_Display(unsigned char *image, int size,
     // Display update control
     EPD_WriteCmd(0x22);
     EPD_WriteData(0xB1);
-    
+
     // Master Activation
     EPD_WriteCmd(0x20);
 
@@ -207,32 +236,34 @@ _attribute_ram_code_ uint8_t EPD_BWR_213_Display(unsigned char *image, int size,
 
     // Temperature sensor read from register
     EPD_WriteCmd(0x1B);
-    epd_temperature = EPD_SPI_read();    
+    epd_temperature = EPD_SPI_read();
     EPD_SPI_read();
 
     WaitMs(5);
 
-    // Set RAM X address
+    // Set RAM X address counter
     EPD_WriteCmd(0x4E);
     EPD_WriteData(0x00);
 
-    // Set RAM Y address
+    // Set RAM Y address counter
     EPD_WriteCmd(0x4F);
-    EPD_WriteData(0x28);
-    EPD_WriteData(0x01);
+    EPD_WriteData(0x00);
+    EPD_WriteData(0x00);
 
+    // Load BW image data into RAM (0x24)
     EPD_LoadImage(image, size, 0x24);
 
-    // Set RAM X address
+    // Set RAM X address counter for yellow plane
     EPD_WriteCmd(0x4E);
     EPD_WriteData(0x00);
 
-    // Set RAM Y address
+    // Set RAM Y address counter for yellow plane
     EPD_WriteCmd(0x4F);
-    EPD_WriteData(0x28);
-    EPD_WriteData(0x01);
+    EPD_WriteData(0x00);
+    EPD_WriteData(0x00);
 
-    EPD_WriteCmd(0x26);// RED Color TODO make something out of it :)
+    // Clear Yellow/Red RAM (0x26) - all 0x00 means no yellow pixels
+    EPD_WriteCmd(0x26);
     int i;
     for (i = 0; i < size; i++)
     {
@@ -242,23 +273,23 @@ _attribute_ram_code_ uint8_t EPD_BWR_213_Display(unsigned char *image, int size,
     if (!full_or_partial)
     {
         EPD_WriteCmd(0x32);
-        for (i = 0; i < sizeof(LUT_bwr_213_part); i++)
+        for (i = 0; i < sizeof(LUT_BWY_266_full); i++)
         {
-            EPD_WriteData(LUT_bwr_213_part[i]);
+            EPD_WriteData(LUT_BWY_266_full[i]);
         }
     }
-    
+
     // Display update control
     EPD_WriteCmd(0x22);
     EPD_WriteData(0xC7);
-    
+
     // Master Activation
     EPD_WriteCmd(0x20);
 
     return epd_temperature;
 }
 
-_attribute_ram_code_ void EPD_BWR_213_set_sleep(void)
+_attribute_ram_code_ void EPD_BWY_266_set_sleep(void)
 {
     // deep sleep
     EPD_WriteCmd(0x10);

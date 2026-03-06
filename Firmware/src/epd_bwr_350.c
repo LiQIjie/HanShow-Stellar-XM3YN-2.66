@@ -62,8 +62,8 @@ _attribute_ram_code_ uint8_t EPD_BWR_350_detect(void)
     for (i = 0; i < 153; i++)
     {
         if(EPD_SPI_read() != EPD_BWR_350_test_pattern)
-            return 0;
-    }
+    return 0;
+}
     return 1;
 }
 

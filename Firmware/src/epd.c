@@ -7,6 +7,7 @@
 #include "epd_bwr_213.h"
 #include "epd_bwr_350.h"
 #include "epd_bwy_350.h"
+#include "epd_bwy_266.h"
 #include "epd_bw_213_ice.h"
 #include "epd_bwr_154.h"
 #include "drivers.h"
@@ -22,8 +23,8 @@ extern const uint8_t ucMirror[];
 #include "font16.h"
 #include "font30.h"
 
-RAM uint8_t epd_model = 0; // 0 = Undetected, 1 = BW213, 2 = BWR213, 3 = BWR154, 4 = BW213ICE, 5 = BWR350
-const char *epd_model_string[] = {"NC", "BW213", "BWR213", "BWR154", "213ICE", "BWR350", "BWY350"};
+RAM uint8_t epd_model = 7; // 0 = Undetected, 1 = BW213, 2 = BWR213, 3 = BWR154, 4 = BW213ICE, 5 = BWR350, 6 = BWY350, 7 = BWY266
+const char *epd_model_string[] = {"NC", "BW213", "BWR213", "BWR154", "213ICE", "BWR350", "BWY350", "BWY266"};
 RAM uint8_t epd_update_state = 0;
 
 const char *BLE_conn_string[] = {"", "B"};
@@ -68,6 +69,14 @@ _attribute_ram_code_ void EPD_detect_model(void)
     {
         epd_model = 4;
     }
+    else if (EPD_BWY_350_detect())
+    {
+        epd_model = 6;
+    }
+    else if (EPD_BWY_266_detect())
+    {
+        epd_model = 7;
+    }
     else
     {
         epd_model = 1;
@@ -106,6 +115,8 @@ _attribute_ram_code_ uint8_t EPD_read_temp(void)
         epd_temperature = EPD_BWR_350_read_temp();
     else if (epd_model == 6)
         epd_temperature = EPD_BWY_350_read_temp();
+    else if (epd_model == 7)
+        epd_temperature = EPD_BWY_266_read_temp();
 
     EPD_POWER_OFF();
 
@@ -141,6 +152,8 @@ _attribute_ram_code_ void EPD_Display(unsigned char *image, int size, uint8_t fu
         epd_temperature = EPD_BWR_350_Display(image, size, full_or_partial);
     else if (epd_model == 6)
         epd_temperature = EPD_BWY_350_Display(image, size, full_or_partial);
+    else if (epd_model == 7)
+        epd_temperature = EPD_BWY_266_Display(image, size, full_or_partial);
 
     epd_temperature_is_read = 1;
     epd_update_state = 1;
@@ -163,6 +176,8 @@ _attribute_ram_code_ void epd_set_sleep(void)
         EPD_BWR_350_set_sleep();
     else if (epd_model == 6)
         EPD_BWY_350_set_sleep();
+    else if (epd_model == 7)
+        EPD_BWY_266_set_sleep();
 
     EPD_POWER_OFF();
     epd_update_state = 0;
@@ -285,6 +300,11 @@ _attribute_ram_code_ void epd_display(uint32_t time_is, uint16_t battery_mv, int
     {// Just as placeholder right now, needs a complete different driving because of RAM limits
         resolution_w = 250;
         resolution_h = 128; // 122 real pixel, but needed to have a full byte
+    }
+    else if (epd_model == 7)
+    {// DKE 2.66" BWY (152x296), SSD1680
+        resolution_w = 296;
+        resolution_h = 152;
     }
 
     obdCreateVirtualDisplay(&obd, resolution_w, resolution_h, epd_temp);

@@ -40,8 +40,7 @@ _attribute_ram_code_ uint8_t EPD_BWY_350_detect(void)
 
     EPD_WriteCmd(0x2F);
     if(EPD_SPI_read() != 0x01)
-        return 0;
-    return 1;
+    return 0;
 }
 
 _attribute_ram_code_ uint8_t EPD_BWY_350_read_temp(void)

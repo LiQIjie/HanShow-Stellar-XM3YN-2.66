@@ -5,3 +5,5 @@ flashing
 flash.bat
 Firmware_test_gpio
 .vscode
+/.vs
+/Firmware/ATC_Paper.bin
