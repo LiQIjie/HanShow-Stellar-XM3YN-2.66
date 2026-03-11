@@ -32,7 +32,8 @@ uint8_t LUT_BW_213_ice_part[] = {
 
 };
 
-_attribute_ram_code_ uint8_t EPD_BW_213_ice_detect(void)
+_attribute_ram_code_
+uint8_t EPD_BW_213_ice_detect(void)
 {
     // SW Reset
     EPD_WriteCmd(0x12);
@@ -40,7 +41,7 @@ _attribute_ram_code_ uint8_t EPD_BW_213_ice_detect(void)
 
     EPD_WriteCmd(0x2F);
     if(EPD_SPI_read() != 0x01)
-        return 0;
+    return 0;
     return 1;
 }
 

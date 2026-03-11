@@ -148,6 +148,7 @@ _attribute_ram_code_ uint8_t EPD_BWY_266_Display(unsigned char* image, int size,
 
     // SW Reset
     EPD_WriteCmd(0x12);
+    EPD_CheckStatus_inverted(1000); // 等待 BUSY=高（空闲）
 
     EPD_CheckStatus_inverted(100);
 
@@ -239,17 +240,17 @@ _attribute_ram_code_ uint8_t EPD_BWY_266_Display(unsigned char* image, int size,
     EPD_WriteCmd(0x26);
     int i;
     for (i = 0; i < size; i++)
-    {
+{
         EPD_WriteData(0x00);
     }
 
     if (!full_or_partial)
     {
-        EPD_WriteCmd(0x32);
+    EPD_WriteCmd(0x32);
         for (i = 0; i < sizeof(LUT_bwr_266_part); i++)
         {
             EPD_WriteData(LUT_bwr_266_part[i]);
-        }
+    }
     }
 
     // Display update control
@@ -260,7 +261,7 @@ _attribute_ram_code_ uint8_t EPD_BWY_266_Display(unsigned char* image, int size,
     EPD_WriteCmd(0x20);
 
     return epd_temperature;
-}
+        }
 #define EPD_2IN13_V2_WIDTH       152//122
 #define EPD_2IN13_V2_HEIGHT      296//250
 
@@ -268,6 +269,8 @@ _attribute_ram_code_ uint8_t EPD_BWY_266_Display_BWR(unsigned char* image, unsig
     if (red_image == NULL) {
         return EPD_BWY_266_Display(image, size, full_or_partial);
     }
+    return 1;
+}
 
     uint8_t epd_temperature = 0;
 
@@ -354,7 +357,7 @@ _attribute_ram_code_ uint8_t EPD_BWY_266_Display_BWR(unsigned char* image, unsig
 
     // Set RAM X address
     EPD_WriteCmd(0x4E);
-    EPD_WriteData(0x00);
+            EPD_WriteData(0x00);
 
     // Set RAM Y address
     EPD_WriteCmd(0x4F);
@@ -379,11 +382,13 @@ _attribute_ram_code_ uint8_t EPD_BWY_266_Display_BWR(unsigned char* image, unsig
 
     // Master Activation
     EPD_WriteCmd(0x20);
+    EPD_CheckStatus_inverted(3000); // 等待 BUSY=高（空闲）
 
     return epd_temperature;
 }
 
-    _attribute_ram_code_ void EPD_BWY_266_set_sleep(void)
+// ----------------- 4) 深睡 -----------------
+_attribute_ram_code_ void EPD_BWY_266_set_sleep(void)
 {
     // deep sleep
     EPD_WriteCmd(0x10);
