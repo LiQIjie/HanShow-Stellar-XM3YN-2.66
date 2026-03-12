@@ -49,6 +49,7 @@ _attribute_ram_code_ void user_init_normal(void)
     // Optional: display test image on EPD after boot
     // epd_display_tiff((uint8_t *)bart_tif, sizeof(bart_tif));
     // epd_display(3334533);
+    epd_display_default_meeting(0);
 }
 
 _attribute_ram_code_ void user_init_deepRetn(void)
@@ -98,21 +99,17 @@ _attribute_ram_code_ void main_loop(void)
 
         /*
          * Update advertising data and notify connected peers.
-         * Note: advertising temperature uses EPD_read_temp() * 10 which
-         * keeps one decimal place by scaling. This may differ from the
-         * temperature source used in "temperature" above depending on
-         * hardware and driver implementations.
          */
-        set_adv_data(EPD_read_temp() * 10, battery_level, battery_mv);
+        int16_t epd_temp_scaled = EPD_read_temp() * 10;
+        set_adv_data(epd_temp_scaled, battery_level, battery_mv);
         ble_send_battery(battery_level);
-        ble_send_temp(EPD_read_temp() * 10);
+        ble_send_temp(epd_temp_scaled);
     }
 
     /*
-     * EPD display refresh based on time: update EPD (electronic paper display) every minute.
-     * - Enter a branch once per minute (compare current_minute with minute_refresh)
-     * - On the hour, trigger a full/more intensive refresh (last parameter 1 indicates full refresh)
-     * - On non-hourly minute updates, trigger a partial or less intensive refresh (last parameter 0)
+     * EPD display refresh based on time: update EPD every minute.
+     * - Fast refresh (quick black flash like e-readers) every 30 minutes to prevent ghosting
+     * - Partial refresh (no flash) on other minutes to save power
      */
     uint8_t current_minute = (get_time() / 60) % 60;
     if (current_minute != minute_refresh)
@@ -123,12 +120,12 @@ _attribute_ram_code_ void main_loop(void)
         {
             /* On the hour: perform a more comprehensive screen update (e.g., full refresh) */
             hour_refresh = current_hour;
-            epd_display(get_time(), battery_mv, temperature, 1);
+            epd_display(get_time(), battery_mv, temperature, 0);
         }
         else
         {
             /* On non-hourly minute updates: perform a partial or less intensive screen update to save power and reduce wear. */
-            epd_display(get_time(), battery_mv, temperature, 0);
+            epd_display(get_time(), battery_mv, temperature, 1);
         }
     }
 
@@ -142,9 +139,9 @@ _attribute_ram_code_ void main_loop(void)
     if (time_reached_period(Timer_CH_0, 10))
     {
         if (ble_get_connected())
-            set_led_color(3); // connected color
+            set_led_color(3); // connected color Blue
         else
-            set_led_color(2); // advertising/not connected color
+			set_led_color(2); // advertising/not connected color Green
         WaitMs(1);
         set_led_color(0); // off
     }
