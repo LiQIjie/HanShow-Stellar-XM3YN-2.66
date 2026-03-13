@@ -1,0 +1,442 @@
+
+<!-- saved from url=(0057)https://atc1441.github.io/ATC_TLSR_Paper_OTA_writing.html -->
+<html data-redeviation-bs-uid="kzcbup4t3ze"><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"><title>ATC_TLSR_Paper BLE control</title>
+<style id="_goober"> @keyframes go2264125279{from{transform:scale(0) rotate(45deg);opacity:0;}to{transform:scale(1) rotate(45deg);opacity:1;}}@keyframes go3020080000{from{transform:scale(0);opacity:0;}to{transform:scale(1);opacity:1;}}@keyframes go463499852{from{transform:scale(0) rotate(90deg);opacity:0;}to{transform:scale(1) rotate(90deg);opacity:1;}}@keyframes go1268368563{from{transform:rotate(0deg);}to{transform:rotate(360deg);}}@keyframes go1310225428{from{transform:scale(0) rotate(45deg);opacity:0;}to{transform:scale(1) rotate(45deg);opacity:1;}}@keyframes go651618207{0%{height:0;width:0;opacity:0;}40%{height:0;width:6px;opacity:1;}100%{opacity:1;height:10px;}}@keyframes go901347462{from{transform:scale(0.6);opacity:0.4;}to{transform:scale(1);opacity:1;}}.go4109123758{z-index:9999;}.go4109123758 > *{pointer-events:auto;}</style><style type="text/css">.___Latex___1nfc2_1 ._latex_1nfc2_1 {
+  font: inherit
+}
+</style><style class="redeviation-bs-style" data-name="content">body>div#redeviation-bs-indicator>div{opacity:0;pointer-events:none}body>#redeviation-bs-overlay.redeviation-bs-visible,body>#redeviation-bs-sidebar.redeviation-bs-visible{opacity:1;pointer-events:auto}body.redeviation-bs-noscroll{overflow:hidden !important}body>div#redeviation-bs-indicator>div{position:absolute;transform:translate3d(-40px, 0, 0);top:0;left:0;width:40px !important;height:100%;background:rgba(0,0,0,0.5);border-radius:0 10px 10px 0;transition:opacity .3s,transform .3s;z-index:2}body>div#redeviation-bs-indicator>div>span{-webkit-mask:no-repeat center/32px;-webkit-mask-image:url(chrome-extension://lmjefbghkfeppnpofmbfmhgodpclipbl/img/icon-bookmark.svg);background-color:#ffffff;position:absolute;display:block;top:0;left:0;width:100%;height:100%}body>div#redeviation-bs-indicator[data-pos=right]{left:auto;right:0}body>div#redeviation-bs-indicator[data-pos=right]>div{transform:translate3d(40px, 0, 0);left:auto;right:0;border-radius:10px 0 0 10px}body>div#redeviation-bs-indicator.redeviation-bs-fullHeight>div{border-radius:0}body>div#redeviation-bs-indicator.redeviation-bs-hover>div{transform:translate3d(0, 0, 0);opacity:1}body>div#redeviation-bs-indicator[data-pos=left].redeviation-bs-has-lsb{height:100% !important;top:0 !important}body>div#redeviation-bs-indicator[data-pos=left].redeviation-bs-has-lsb>div{background:rgba(0,0,0,0)}body>div#redeviation-bs-indicator[data-pos=left].redeviation-bs-has-lsb>div>span{-webkit-mask-position-y:20px}body>#redeviation-bs-sidebar{width:350px;max-width:none;height:0;z-index:2147483646;background-color:rgba(0,0,0,0.6) !important;color-scheme:auto !important;speak:none;border:none;display:block !important;visibility:visible !important;transform:translate3d(-350px, 0, 0);transition:width 0s .3s,height 0s .3s,opacity .3s,transform .3s}body>#redeviation-bs-sidebar[data-pos=right]{left:auto;right:0;transform:translate3d(350px, 0, 0)}body>#redeviation-bs-sidebar.redeviation-bs-visible{width:calc(100% + 350px);height:100%;transform:translate3d(0, 0, 0);transition:opacity .3s,transform .3s}body>#redeviation-bs-sidebar.sidepanel{width:100% !important}body>#redeviation-bs-sidebar.redeviation-bs-hideMask{background:none !important}body>#redeviation-bs-sidebar.redeviation-bs-hideMask:not(.redeviation-bs-hover){width:calc(350px + 50px)}body>#redeviation-bs-overlay{width:100%;max-width:none;height:100%;z-index:2147483647;border:none;speak:none;background:rgba(0,0,0,0.5) !important;color-scheme:auto !important;transition:opacity .3s}/*# sourceMappingURL=content.css.map */
+</style></head>
+
+<body>
+  <script>
+
+    let bleDevice;
+    let gattServer;
+    let Theservice;
+    let ServiceMain;
+    let settingsCharacteristics;
+    let writeCharacteristic;
+    let busy = false;
+    let imgArray;
+    let imgArrayLen = 0;
+    let uploadPart = 0;
+    let startTime = 0;
+    let reconnectTrys = 0;
+
+    function delay(delayInms) {
+      return new Promise(resolve => {
+        setTimeout(() => {
+          resolve(2);
+        }, delayInms);
+      });
+    }
+
+    function resetVariables() {
+      busy = false;
+      gattServer = null;
+      Theservice = null;
+      writeCharacteristic = null;
+      document.getElementById("log").value = '';
+    }
+
+    function decimalToHex(d, padding) {
+      var hex = Number(d).toString(16);
+      padding = typeof (padding) === "undefined" || padding === null ? padding = 2 : padding;
+
+      while (hex.length < padding) {
+        hex = "0" + hex;
+      }
+
+      return hex;
+    }
+
+    function handleError(error) {
+      console.log(error);
+      resetVariables();
+      if (bleDevice == null)
+        return;
+      if (reconnectTrys <= 5) {
+        reconnectTrys++;
+        connect();
+      }
+      else {
+        addLog("Was not able to connect, aborting");
+        reconnectTrys = 0;
+      }
+    }
+
+    async function sendCommand(cmd) {
+      if (writeCharacteristic) {
+        await writeCharacteristic.writeValue(cmd);
+      }
+    }
+
+    async function rxTxSendCommand(cmd) {
+      if (settingsCharacteristics) {
+        await settingsCharacteristics.writeValue(cmd);
+      }
+    }
+
+    function readFlash(readAddress) {
+      hex_address = decimalToHex(readAddress, 8);
+      addLog("Reading address: " + hex_address + " now");
+      raw_cmd = "04" + hex_address;
+      addLog("Sending: " + raw_cmd);
+      cmd = hexToBytes(raw_cmd);
+      sendCommand(cmd);
+      console.log('CMD was Send');
+    }
+
+    function readRam(readAddress) {
+      hex_address = decimalToHex(readAddress, 8);
+      addLog("Reading address: " + hex_address + " now");
+      raw_cmd = "05" + hex_address;
+      addLog("Sending: " + raw_cmd);
+      cmd = hexToBytes(raw_cmd);
+      sendCommand(cmd).then(() => {
+        console.log('CMD was Send');
+      })
+        .catch(handleError);
+    }
+
+    function writeFW(writeAddress, data) {
+    }
+
+    var fwSizeComplete = 0;
+    var fwBytesTransmited = 0;
+
+    // Sending a 0x100 long dataset to a bank at given address
+    async function sendPart(address, data) {
+      hex_address = decimalToHex(address, 8);
+      var part_len = 480;
+      while (data.length) {
+        var cur_part_len = part_len;
+        if (data.length < part_len)
+          cur_part_len = data.length;
+        var data_part = data.substring(0, cur_part_len);
+        data = data.substring(cur_part_len);
+        console.log("Sub Part: " + "03" + data_part);
+        await sendCommand(hexToBytes("03" + data_part));
+        fwBytesTransmited += cur_part_len;
+        setStatus('Current part: ' + fwBytesTransmited / 2 + " All: " + fwSizeComplete / 2 + " Time: " + (new Date().getTime() - startTime) / 1000.0 + "s");
+      }
+      await sendCommand(hexToBytes("02" + hex_address));
+      console.log("Writing bank: " + hex_address);
+      await delay(50);
+    }
+
+    async function eraseFwArea() {
+      var fwAreaSize = 0x20000;
+      var fwCurAddress = 0x20000;
+      while (fwCurAddress < (0x20000 + fwAreaSize)) {
+        hex_address = decimalToHex(fwCurAddress, 8);
+        console.log("Erasing block: " + hex_address);
+        await sendCommand(hexToBytes("01" + hex_address));
+        fwCurAddress += 0x1000;
+      }
+    }
+
+    async function doCRCcheck(localCRC) {
+      await sendCommand(hexToBytes("06"));
+    }
+
+    async function doFinalFlash(crc) {
+      addLog("Sending Final flash: " + "07C001CEED" + crc);
+      await sendCommand(hexToBytes("07C001CEED" + crc));
+    }
+
+    function calculateCRC(localData) {
+      var checkPosistion = 0;
+      var outCRC = 0;
+      addLog(Number("0x" + localData.substring(checkPosistion, checkPosistion + 2)));
+      while (checkPosistion < 0x40000) {
+        if (checkPosistion < localData.length)
+          outCRC += Number("0x" + localData.substring(checkPosistion, checkPosistion + 2));
+        else
+          outCRC += 0xff;
+        checkPosistion += 2;
+      }
+      return decimalToHex(outCRC & 0xffff, 4);
+    }
+
+    async function sendFile(address, data) {
+      startTime = new Date().getTime();
+      var part_len = 0x200;
+      var addressOffset = 0;
+      var inCRC = calculateCRC(data);
+      addLog("File CRC = " + inCRC);
+      fwSizeComplete = data.length;
+      fwBytesTransmited = 0;
+      await eraseFwArea();
+      while (data.length) {
+        var cur_part_len = part_len;
+        if (data.length < part_len)
+          cur_part_len = data.length;
+        var data_part = data.substring(0, cur_part_len);
+        data = data.substring(cur_part_len);
+        await sendPart(address + addressOffset, data_part);
+        addressOffset += cur_part_len / 2;
+      }
+      await doFinalFlash(inCRC);
+    }
+
+    function sendcmd(cmdTXT) {
+      console.log('SendCMDnow');
+      let cmd = hexToBytes(cmdTXT);
+      addLog('Send CMD: ' + cmdTXT);
+      console.log('Send CMD: ');
+      console.log(cmdTXT);
+      console.log('Send CMD bytes: ');
+      console.log(cmd);
+      sendCommand(cmd).then(() => {
+        console.log('CMD was Send');
+      })
+        .catch(handleError);
+    }
+
+    function sendimg(cmdIMG) {
+      imgArray = cmdIMG.replace(/(?:\r\n|\r|\n|,|0x| )/g, '');
+      imgArrayLen = imgArray.length;
+      uploadPart = 0;
+      console.log('Sending image ' + imgArrayLen);
+      sendCommand(hexToBytes("0000")).then(() => {
+        sendCommand(hexToBytes("020000")).then(() => {
+          sendIMGpart();
+        })
+      })
+        .catch(handleError);
+    }
+
+    function sendIMGpart() {
+      if (imgArray.length > 0) {
+        let currentpart = "03" + imgArray.substring(0, 38);
+        imgArray = imgArray.substring(38);
+        setStatus('Current part: ' + uploadPart++);
+        console.log('Curr Part: ' + currentpart);
+        sendCommand(hexToBytes(currentpart)).then(() => {
+          sendIMGpart();
+        })
+      } else {
+        console.log('Last Part: ' + imgArray);
+        sendCommand(hexToBytes("01")).then(() => {
+          console.log('Update was send');
+        })
+      }
+    }
+
+    function disconnect() {
+      resetVariables();
+      console.log('Disconnected.');
+      addLog('Disconnected.');
+      document.getElementById("connectbutton").innerHTML = 'Connect';
+    }
+
+    function handleNotify(data) {
+      addLog("Got bytes: " + bytesToHex(data.buffer));
+    }
+
+    function preConnect() {
+      if (gattServer != null && gattServer.connected) {
+        if (bleDevice != null && bleDevice.gatt.connected)
+          bleDevice.gatt.disconnect();
+      }
+      else {
+        connectTrys = 0;
+        navigator.bluetooth.requestDevice({ optionalServices: ['0000221f-0000-1000-8000-00805f9b34fb', '00001f10-0000-1000-8000-00805f9b34fb', '13187b10-eba9-a3ba-044e-83d3217d9a38'], acceptAllDevices: true }).then(device => {
+          device.addEventListener('gattserverdisconnected', disconnect);
+          bleDevice = device;
+          connect();
+        }).catch(handleError);
+      }
+    }
+
+    function reConnect() {
+      connectTrys = 0;
+      if (bleDevice != null && bleDevice.gatt.connected)
+        bleDevice.gatt.disconnect();
+      resetVariables();
+      addLog("Reconnect");
+      setTimeout(function () { connect(); }, 300);
+    }
+
+    function connect() {
+      if (writeCharacteristic == null) {
+        addLog("Connecting to: " + bleDevice.name);
+        bleDevice.gatt.connect().then(server => {
+          console.log('> Found GATT server');
+          gattServer = server;
+          return gattServer.getPrimaryService('0000221f-0000-1000-8000-00805f9b34fb');
+        })
+          .then(service => {
+            console.log('> Found service');
+            Theservice = service;
+            return Theservice.getCharacteristic('0000331f-0000-1000-8000-00805f9b34fb');
+          })
+          .then(characteristic => {
+            console.log('> Found write characteristic');
+            addLog('> Found write characteristic');
+            document.getElementById("connectbutton").innerHTML = 'Disconnect';
+            writeCharacteristic = characteristic;
+            return writeCharacteristic.startNotifications().then(() => {
+              writeCharacteristic.addEventListener('characteristicvaluechanged', event => {
+                var value = event.target.value;
+                handleNotify(value);
+              });
+              connect_to_rxtx();
+            });
+          })
+          .catch(handleError);
+      }
+    }
+
+    function connect_to_rxtx() {
+      gattServer.getPrimaryServices().then(services => {
+        for (var i = 0; i < services.length; i++) {
+          console.log("Services: " + services[i].uuid);
+          if (services[i].uuid == "00001f10-0000-1000-8000-00805f9b34fb") {
+            gattServer.getPrimaryService('00001f10-0000-1000-8000-00805f9b34fb')
+              .then(service => {
+                addLog("Found custom Main service");
+                ServiceMain = service;
+                return ServiceMain.getCharacteristic('00001f1f-0000-1000-8000-00805f9b34fb');
+              }).then(characteristic => {
+                addLog("Found custom write characteristic");
+                settingsCharacteristics = characteristic;
+              }).catch();
+            return;
+          }
+        }
+      }).catch();
+    }
+
+    function setTime(hourOffset) {
+      let unixNow = Math.round(Date.now() / 1000)+(60*60*hourOffset);
+	  
+	  var s = new Date(unixNow*1000).toLocaleTimeString("de-DE")
+
+      addLog("Setting time : " + s + " : dd" + intToHex4(unixNow));
+      rxTxSendCommand(hexToBytes("dd" + intToHex4(unixNow)));
+    }
+	
+	function sendForceEpd(nr)
+	{
+      addLog("Forcing EPD : e0" + byteToHex(nr+1));
+      rxTxSendCommand(hexToBytes("e0" + byteToHex(nr+1)));
+	}
+
+    function setStatus(statusText) {
+      document.getElementById("status").innerHTML = statusText;
+    }
+
+    function addLog(logTXT) {
+      var today = new Date();
+      var time = ("0" + today.getHours()).slice(-2) + ":" + ("0" + today.getMinutes()).slice(-2) + ":" + ("0" + today.getSeconds()).slice(-2) + " : ";
+      document.getElementById("log").innerHTML += time + logTXT + '<br>';
+      console.log(time + logTXT);
+      while ((document.getElementById("log").innerHTML.match(/<br>/g) || []).length > 10) {
+        var logs_br_position = document.getElementById("log").innerHTML.search("<br>");
+        document.getElementById("log").innerHTML = document.getElementById("log").innerHTML.substring(logs_br_position + 4);
+      }
+    }
+
+    function hexToBytes(hex) {
+      for (var bytes = [], c = 0; c < hex.length; c += 2)
+        bytes.push(parseInt(hex.substr(c, 2), 16));
+      return new Uint8Array(bytes);
+    }
+
+    function bytesToHex(data) {
+      return new Uint8Array(data).reduce(function (memo, i) {
+        return memo + ("0" + i.toString(16)).slice(-2);
+      }, "");
+    }
+
+    function byteToHex(intIn) {
+      var stringOut = "";
+      stringOut = ("0" + intIn.toString(16)).substr(-2)
+      return stringOut;
+    }
+
+    function intToHex(intIn) {
+      var stringOut = "";
+      stringOut = ("0000" + intIn.toString(16)).substr(-4)
+      return stringOut.substring(2, 4) + stringOut.substring(0, 2);
+    }
+
+    function intToHex4(intIn) {
+      var stringOut = "";
+      stringOut = ("00000000" + intIn.toString(16)).substr(-8)
+      return stringOut;
+    }
+
+    window.onload = function () {
+      document.querySelector("#file").addEventListener("change", function () {
+        var reader = new FileReader();
+        reader.onload = function () {
+          firmwareArray = bytesToHex(this.result);
+          if (firmwareArray.substring(16, 24) != "4b4e4c54") {
+            alert("Select file is no telink firmware .bin");
+            addLog("Select file is no telink firmware .bin");
+            firmwareArray = "";
+            return;
+          }
+          addLog("File was selected, size: " + firmwareArray.length / 2 + " bytes");
+          document.getElementById("cmdIMAGE").value = firmwareArray;
+        }
+        if (this.files[0] != null)
+          reader.readAsArrayBuffer(this.files[0]);
+        else
+          addLog("No file selected");
+      }, false);
+    }
+
+    function resetFileSelector() {
+      document.getElementById("file").value = '';
+    };
+
+
+  </script>
+  Welcome to ATCnetz.de ATC_TLSR_Paper BLE control,<br>Click connect and select the TLSR E-Paper display you want to
+  talk to.<br><br>
+  The ATC_TLSR_Paper Firmware can be found here: <a href="https://github.com/atc1441/ATC_TLSR_Paper" target="_blank">https://github.com/atc1441/ATC_TLSR_Paper</a><br><br>
+  <button id="connectbutton" type="button" onclick="preConnect();">Connect</button>
+  <button id="connectbutton" type="button" onclick="reConnect();">Reconnect</button>
+  <button id="connectbutton" type="button" onclick="document.getElementById(&#39;log&#39;).innerHTML = &#39;&#39;;">Clear Log</button>
+  <br><br>
+  <div id="status">Upload status</div><br>
+  Please select a .bin file you want to flash to the Telink BLE device.<br>
+  Connect to the Display and click on "Send Firmware" after the display is connected.<br>
+  after all bytes are uploaded the display will do a CRC check and flash and reboot into the new firmware if all is
+  ok.<br><br>
+  Select Firmware: <input type="file" accept=".bin" id="file" onclick="resetFileSelector();"><br><br>
+  <button type="button" onclick="sendFile(0x20000,document.getElementById(&quot;cmdIMAGE&quot;).value);">Send
+    Firmware</button><br>
+  <textarea id="cmdIMAGE" rows="12" cols="100"></textarea><br><br>
+  <label for="hour">Hour offset:</label>
+<input type="number" id="hourOffset" min="-12" max="12" value="2"><br>
+  <button type="button" onclick="setTime(document.getElementById(&quot;hourOffset&quot;).value);">Set Time</button><br><br>
+  <label for="hour">Force EPD Model:</label>
+<select id="forceEPDselection">
+  <option>BW213</option>
+  <option>BWR213</option>
+  <option>BWR154</option>
+  <option>213ICE</option>
+  <option>BWR350</option>
+  <option>BWY350</option>
+</select>
+  <button type="button" onclick="sendForceEpd(document.getElementById(&quot;forceEPDselection&quot;).selectedIndex);">Force EPD</button><br><br>
+  <input type="text" id="positionText" value="20000">
+  <button type="button" onclick="readFlash(Number(&#39;0x&#39;+document.getElementById(&quot;positionText&quot;).value));">readFlash</button><br>
+  <input type="text" id="positionTextRam" value="0">
+  <button type="button" onclick="readRam(Number(&#39;0x&#39;+document.getElementById(&quot;positionTextRam&quot;).value));">readRam</button><br>
+  <br>
+  <br>
+  <input type="text" id="cmdTXT" value="0055">
+  <button type="button" onclick="sendcmd(document.getElementById(&quot;cmdTXT&quot;).value);">SendCMD</button><br><br>
+  <button id="w_fw_button" type="button" onclick="writeFW(0x20000,&#39;1212123234321234&#39;);">Write FW</button><br>
+  <button type="button" onclick="doFinalFlash();">final flash</button><br>
+  <div id="log"><br></div>
+
+
+
+<bookmark-sidebar-ir6nwl2alxl id="redeviation-bs-sidebar" class="notranslate" data-theme="default" data-pos="left"><template shadowrootmode="closed"><iframe style="margin:0;padding: 0;border: none;width: 100%;height: 100%;"></iframe></template></bookmark-sidebar-ir6nwl2alxl><div id="redeviation-bs-indicator" data-theme="default" class="redeviation-bs-fullHeight redeviation-bs-visible" data-pos="left" style="height: 100%; top: 0%;"><div><span></span></div></div></body><div class="xl-chrome-ext-bar_4DB361DE-01F7-4376-B494-639E489D19ED" id="xl_chrome_ext_4DB361DE-01F7-4376-B494-639E489D19ED" data-v-app="" style="display: block;"><div class=""><div id="xl_chrome_ext_video_tag_wrapper_4DB361DE-01F7-4376-B494-639E489D19ED" config="[object Object]" uiversion="v2" exception="false" latestvideosrc="" isshowvideotag="false" isshowdownloadbar="true" isshowcloudaddbar="false"><div class="_video_op_wrapper_96mx8_1" config="[object Object]" uiversion="v2" style="display: none;"><ul class="_video_op_list_96mx8_17"><li class="_op_item_96mx8_39 _download_96mx8_45"><span class="_op_icon_96mx8_25"></span><span class="_op_text_96mx8_31">下载</span></li><li class="_op_item_96mx8_39 _screen_96mx8_51"><span class="_op_icon_96mx8_25"></span><span class="_op_text_96mx8_31">投屏</span></li></ul></div></div><div class="badge_wrapper_4DB361DE-01F7-4376-B494-639E489D19ED _badge_wrapper_wnbzb_1" id="badge_wrapper_4DB361DE-01F7-4376-B494-639E489D19ED"><div class="_logo_wnbzb_24"></div><span class="_line_wnbzb_32"></span><div class="_text_wrapper_wnbzb_39"><span class="_download_icon_wnbzb_51"></span><span class="_text_wnbzb_39">高速下载</span></div></div><!----><!----><!----><!----><div class="_container_wq4mj_4"><!----></div></div></div><div id="__yetone-nextai-translator" style="z-index: 2147483647;"><template shadowrootmode="open"><div></div></template></div></html>

@@ -1,0 +1,213 @@
+
+<!-- saved from url=(0058)https://atc1441.github.io/ATC_TLSR_Paper_Image_Upload.html -->
+<html data-redeviation-bs-uid="bovqfn73dlh"><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+	<title>ATC_TLSR_Paper BLE control</title>
+<style id="_goober"> @keyframes go2264125279{from{transform:scale(0) rotate(45deg);opacity:0;}to{transform:scale(1) rotate(45deg);opacity:1;}}@keyframes go3020080000{from{transform:scale(0);opacity:0;}to{transform:scale(1);opacity:1;}}@keyframes go463499852{from{transform:scale(0) rotate(90deg);opacity:0;}to{transform:scale(1) rotate(90deg);opacity:1;}}@keyframes go1268368563{from{transform:rotate(0deg);}to{transform:rotate(360deg);}}@keyframes go1310225428{from{transform:scale(0) rotate(45deg);opacity:0;}to{transform:scale(1) rotate(45deg);opacity:1;}}@keyframes go651618207{0%{height:0;width:0;opacity:0;}40%{height:0;width:6px;opacity:1;}100%{opacity:1;height:10px;}}@keyframes go901347462{from{transform:scale(0.6);opacity:0.4;}to{transform:scale(1);opacity:1;}}.go4109123758{z-index:9999;}.go4109123758 > *{pointer-events:auto;}</style><style type="text/css">.___Latex___1nfc2_1 ._latex_1nfc2_1 {
+  font: inherit
+}
+</style><style class="redeviation-bs-style" data-name="content">body>div#redeviation-bs-indicator>div{opacity:0;pointer-events:none}body>#redeviation-bs-overlay.redeviation-bs-visible,body>#redeviation-bs-sidebar.redeviation-bs-visible{opacity:1;pointer-events:auto}body.redeviation-bs-noscroll{overflow:hidden !important}body>div#redeviation-bs-indicator>div{position:absolute;transform:translate3d(-40px, 0, 0);top:0;left:0;width:40px !important;height:100%;background:rgba(0,0,0,0.5);border-radius:0 10px 10px 0;transition:opacity .3s,transform .3s;z-index:2}body>div#redeviation-bs-indicator>div>span{-webkit-mask:no-repeat center/32px;-webkit-mask-image:url(chrome-extension://lmjefbghkfeppnpofmbfmhgodpclipbl/img/icon-bookmark.svg);background-color:#ffffff;position:absolute;display:block;top:0;left:0;width:100%;height:100%}body>div#redeviation-bs-indicator[data-pos=right]{left:auto;right:0}body>div#redeviation-bs-indicator[data-pos=right]>div{transform:translate3d(40px, 0, 0);left:auto;right:0;border-radius:10px 0 0 10px}body>div#redeviation-bs-indicator.redeviation-bs-fullHeight>div{border-radius:0}body>div#redeviation-bs-indicator.redeviation-bs-hover>div{transform:translate3d(0, 0, 0);opacity:1}body>div#redeviation-bs-indicator[data-pos=left].redeviation-bs-has-lsb{height:100% !important;top:0 !important}body>div#redeviation-bs-indicator[data-pos=left].redeviation-bs-has-lsb>div{background:rgba(0,0,0,0)}body>div#redeviation-bs-indicator[data-pos=left].redeviation-bs-has-lsb>div>span{-webkit-mask-position-y:20px}body>#redeviation-bs-sidebar{width:350px;max-width:none;height:0;z-index:2147483646;background-color:rgba(0,0,0,0.6) !important;color-scheme:auto !important;speak:none;border:none;display:block !important;visibility:visible !important;transform:translate3d(-350px, 0, 0);transition:width 0s .3s,height 0s .3s,opacity .3s,transform .3s}body>#redeviation-bs-sidebar[data-pos=right]{left:auto;right:0;transform:translate3d(350px, 0, 0)}body>#redeviation-bs-sidebar.redeviation-bs-visible{width:calc(100% + 350px);height:100%;transform:translate3d(0, 0, 0);transition:opacity .3s,transform .3s}body>#redeviation-bs-sidebar.sidepanel{width:100% !important}body>#redeviation-bs-sidebar.redeviation-bs-hideMask{background:none !important}body>#redeviation-bs-sidebar.redeviation-bs-hideMask:not(.redeviation-bs-hover){width:calc(350px + 50px)}body>#redeviation-bs-overlay{width:100%;max-width:none;height:100%;z-index:2147483647;border:none;speak:none;background:rgba(0,0,0,0.5) !important;color-scheme:auto !important;transition:opacity .3s}/*# sourceMappingURL=content.css.map */
+</style></head>
+
+<body>
+	<script>
+		let bleDevice;
+		let gattServer;
+		let Theservice;
+		let writeCharacteristic;
+		let writeCharacteristicImg;
+		let reconnectTrys = 0;
+
+		let imgArray = "";
+		let imgArrayLen = 0;
+		let uploadPart = 0;
+
+		function resetVariables() {
+			gattServer = null;
+			Theservice = null;
+			writeCharacteristic = null;
+			writeCharacteristicImg = null;
+			document.getElementById("log").value = '';
+			imgArray = "";
+			imgArrayLen = 0;
+			uploadPart = 0;
+		}
+
+		function handleError(error) {
+			console.log(error);
+			resetVariables();
+			if (bleDevice == null)
+				return;
+			if (reconnectTrys <= 5) {
+				reconnectTrys++;
+				connect();
+			}
+			else {
+				addLog("Was not able to connect, aborting");
+				reconnectTrys = 0;
+			}
+		}
+
+		async function sendCommandImg(cmd) {
+			if (writeCharacteristicImg) {
+				await writeCharacteristicImg.writeValue(cmd);
+			}
+		}
+
+		async function sendCommand(cmd) {
+			if (writeCharacteristic) {
+				await writeCharacteristic.writeValue(cmd);
+			}
+		}
+
+		async function sendcmd(cmdTXT) {
+			let cmd = hexToBytes(cmdTXT);
+			addLog('Send CMD: ' + cmdTXT);
+			await sendCommand(cmd);
+		}
+
+		function sendimg(cmdIMG) {
+			startTime = new Date().getTime();
+			imgArray = cmdIMG.replace(/(?:\r\n|\r|\n|,|0x| )/g, '');
+			imgArrayLen = imgArray.length;
+			uploadPart = 0;
+			console.log('Sending image ' + imgArrayLen);
+			sendCommand(hexToBytes("0000")).then(() => {
+				sendCommand(hexToBytes("020000")).then(() => {
+					sendIMGpart();
+				})
+			})
+				.catch(handleError);
+		}
+
+		function sendIMGpart() {
+			if (imgArray.length > 0) {
+				let currentpart = "03" + imgArray.substring(0, 480);
+				imgArray = imgArray.substring(480);
+				setStatus('Current part: ' + uploadPart++ + " Time: " + (new Date().getTime() - startTime) / 1000.0 + "s");
+				console.log('Curr Part: ' + currentpart);
+				sendCommand(hexToBytes(currentpart)).then(() => {
+					sendIMGpart();
+				})
+			} else {
+				console.log('Last Part: ' + imgArray);
+				sendCommand(hexToBytes("01")).then(() => {
+					console.log("Update was send Time: " + (new Date().getTime() - startTime) / 1000.0 + "s");
+					setStatus("Update was send in: " + (new Date().getTime() - startTime) / 1000.0 + "s");
+				})
+			}
+		}
+
+		function disconnect() {
+			resetVariables();
+			addLog('Disconnected.');
+			document.getElementById("connectbutton").innerHTML = 'Connect';
+		}
+
+		function preConnect() {
+			if (gattServer != null && gattServer.connected) {
+				if (bleDevice != null && bleDevice.gatt.connected)
+					bleDevice.gatt.disconnect();
+			}
+			else {
+				connectTrys = 0;
+				navigator.bluetooth.requestDevice({ optionalServices: ['13187b10-eba9-a3ba-044e-83d3217d9a38'], acceptAllDevices: true }).then(device => {
+					device.addEventListener('gattserverdisconnected', disconnect);
+					bleDevice = device;
+					connect();
+				}).catch(handleError);
+			}
+		}
+
+		function reConnect() {
+			connectTrys = 0;
+			if (bleDevice != null && bleDevice.gatt.connected)
+				bleDevice.gatt.disconnect();
+			resetVariables();
+			addLog("Reconnect");
+			setTimeout(function () { connect(); }, 300);
+		}
+
+		function connect() {
+			if (writeCharacteristic == null) {
+				addLog("Connecting to: " + bleDevice.name);
+				bleDevice.gatt.connect().then(server => {
+					console.log('> Found GATT server');
+					gattServer = server;
+					return gattServer.getPrimaryService('13187b10-eba9-a3ba-044e-83d3217d9a38');
+				}).then(service => {
+					console.log('> Found service');
+					Theservice = service;
+					return Theservice.getCharacteristic('4b646063-6264-f3a7-8941-e65356ea82fe');
+				}).then(characteristic => {
+					addLog('> Found write characteristic');
+					document.getElementById("connectbutton").innerHTML = 'Disconnected';
+					writeCharacteristic = characteristic;
+					return;
+				}).catch(handleError);
+			}
+		}
+
+		function setStatus(statusText) {
+			document.getElementById("status").innerHTML = statusText;
+		}
+
+		function addLog(logTXT) {
+			var today = new Date();
+			var time = ("0" + today.getHours()).slice(-2) + ":" + ("0" + today.getMinutes()).slice(-2) + ":" + ("0" + today.getSeconds()).slice(-2) + " : ";
+			document.getElementById("log").innerHTML += time + logTXT + '<br>';
+			console.log(time + logTXT);
+			while ((document.getElementById("log").innerHTML.match(/<br>/g) || []).length > 10) {
+				var logs_br_position = document.getElementById("log").innerHTML.search("<br>");
+				document.getElementById("log").innerHTML = document.getElementById("log").innerHTML.substring(logs_br_position + 4);
+			}
+		}
+
+		function hexToBytes(hex) {
+			for (var bytes = [], c = 0; c < hex.length; c += 2)
+				bytes.push(parseInt(hex.substr(c, 2), 16));
+			return new Uint8Array(bytes);
+		}
+
+		function bytesToHex(data) {
+			return new Uint8Array(data).reduce(
+				function (memo, i) {
+					return memo + ("0" + i.toString(16)).slice(-2);
+				}, "");
+		}
+
+		function intToHex(intIn) {
+			var stringOut = "";
+			stringOut = ("0000" + intIn.toString(16)).substr(-4)
+			return stringOut.substring(2, 4) + stringOut.substring(0, 2);
+		}
+
+	</script>
+	Welcome to ATCnetz.de ATC_TLSR_Paper BLE control,<br>Click connect and select the TLSR E-Paper Tracker you want to
+	talk to.<br><br>
+	The ATC_TLSR_Paper Firmware can be found here: <a href="https://github.com/atc1441/ATC_TLSR_Paper" target="_blank">https://github.com/atc1441/ATC_TLSR_Paper</a><br><br>
+
+	<button id="connectbutton" type="button" onclick="preConnect();">Connect</button>
+	<button id="connectbutton" type="button" onclick="reConnect();">Reconnect</button>
+	<button id="connectbutton" type="button" onclick="document.getElementById(&#39;log&#39;).innerHTML = &#39;&#39;;">Clear Log</button>
+	<br><br>
+
+	<input type="text" id="cmdTXT" value="0055">
+	<button type="button" onclick="sendcmd(document.getElementById(&quot;cmdTXT&quot;).value);">Send Debug CMD</button>
+	<br><br>
+
+	<button type="button" onclick="sendimg(document.getElementById(&quot;cmdIMAGE&quot;).value);">Send Image to
+		E-Paper</button>
+	<br>
+
+	<div id="status">
+		Upload status</div>
+	<br>
+
+	<textarea id="cmdIMAGE" rows="10" cols="90">0000000007fffffffffffffffffc00000000000007fffffffffffffffffc00000000000007fffffffffffffffffc00000000000007fffffffffffffffffc00000000000007fffffffffffffffffc00000000000007fffffffffffffffffc00000000000007fffffffffffffffffc00000000000007fffffffffffffffffc00000000000007fffffffffffffffffc00000000000007fffffffffffffffffc00000000000007fffffffffffffffffc00000000000007fffffffffffffffffc00000000000007fffffffffffffffffc00000000000007fffffffffffffffffc00000000000007fffffffffffffffffc00000000000007fffffffffffffffffc00000000000007fffffffffffffffffc00000000000007fffffffffffffffffc00000000000007fffffffffffffffffc00000000000007fffffffffffffffffc00000000000007fffffffffffffffffc00000000000007fffffffffffffffffc00000000000007fffffffffffffffffc00000000000007fffffffffffffffffc00000000000007fffffffffffffffffc00000000000007fffffffffffffffffc00000000000007fffffffffffffffffc00000000000007fffffffffffffffffc00000000000007fffffffffffffffffc00000000000007fffffffffffffffffc00000000000007fffffffffffffffffc00000000000007fffffffffffffffffc00000000000007fffffffffffffffffc00000000000007fffffffffffffffffc00000000000007fffffffffffffffffc00000000000007fffffffffffffffffc00000000000007fffffffffffffffffc00000000000007fffffffffffffffffc00000000000007fffffffffffffffffc00000000000007fffffffffffffffffc00000000000007fffffffffffffffffc00000000000007fffffffffffffffffc00000000000007fffffffffffffffffc00000000000007fffffffffffffffffc00000000000007fffffffffffffffffc00000000000007fffffffffffffffffc00000000000007ffffffe07ffffffffc00000000000007ffffffc03ffffffffc00000000000007ffffff803ffffffffc00000000000007ffffff803ffffffffc00000000000007ffffff807ffffffffc00000000000007ffffff83fffffffffc00000000000007ffffff83fffffffffc00000000000007ffffffc1fffffffffc00000000000007ffffffc0fffffffffc00000000000007ffffffe07ffffffffc00000000000007ffffffc0001ffffffc00000000000007ffffff80000ffffffc00000000000007ffffff80000ffffffc00000000000007ffffff80000ffffffc00000000000007ffffffc0001ffffffc00000000000007fffffffffffffffffc00000000000007fffffffffffffffffc00000000000007fffffffff87ffffffc00000000000007fffffff0f83ffffffc00000000000007ffffffe0781ffffffc00000000000007ffffffc03c1ffffffc000000001bc007ffffffc03c1ffffffc0000000033e007ffffff801e0ffffffc00000000376007ffffff821e0ffffffc00000000366007ffffff820e0ffffffc000000003e6007ffffff830e0ffffffc000000001ce007ffffff830e0ffffffc00000000000007ffffff83860ffffffc00000000000007ffffff81860ffffffc00000001bfe007ffffffc0401ffffffc00000001bfe007ffffffc0001ffffffc00000001bfe007ffffffe0003ffffffc00000000000007fffffff0003ffffffc00000000000007fffffffc007ffffffc00000000000007ffffffff01fffffffc00000000000007fffffffffffffffffc00000000000007fffffffffffffffffc00000000000007fffffffc03fffffffc000000001ec007fffffff0007ffffffc000000003ee007ffffffe0003ffffffc00000000366007ffffffc0001ffffffc00000000366007ffffff80001ffffffc00000000366007ffffff81f80ffffffc000000003ee007ffffff83fe0ffffffc000000001fc007ffffff83fe0ffffffc000000000fc007ffffff83fe0ffffffc00000000000007ffffffc1fe0ffffffc00000000000007ffffffc1fe0ffffffc000000001fe007ffffff8000000ffffc000000003fe007ffffff00000007fffc00000000380007ffffff00000007fffc00000000300007ffffff00000007fffc00000000300007ffffff0000000ffffc000000001fe007ffffffc1fffffffffc000000003fe007fffffffffffffffffc000000003fe007fffffffffffffffffc00000000300007fffffffffffffffffc00000000300007ffffffffff1ffffffc000000001fe007ffffffe0000ffffffc000000003fe007ffffffc0000ffffffc000000003fe007ffffffc0001ffffffc00000000000007ffffff80001ffffffc00000000000007ffffff80001ffffffc000000001fe007ffffff83fc0ffffffc000000003fe007ffffff83fe0ffffffc000000003ee007ffffff83fe0ffffffc00000000366007ffffff81fe0ffffffc00000000366007ffffffc07c0ffffffc0000000037e007ffffffc0000ffffffc000000001bc007ffffffe0001ffffffc00000000000007fffffff0003ffffffc00000000000007fffffffc007ffffffc000000001fe007ffffffff01fffffffc000000003fe007fffffffffffffffffc00000000380007fffffffffffffffffc00000000300007fffff81ffffffffffc00000000300007fffff007fffffffffc000000001fe007ffffe003fffffffffc000000003fe007ffffc001fffffffffc000000003fe007ffff8001fffffffffc00000000000007ffff81c0fffffffffc00000000000007ffff83e0fffffffffc00000000000007ffff03e07ffffffffc00000000000007ffff07f07ffffffffc00000000000007ffff07f07ffffffffc00000000300007ffff07f07ffffffffc000000003e0007ffff07f07ffffffffc000000003fc007ffff0000001ffffffc0000000007f807ffff0000000ffffffc0000000001fc07ffff0000000ffffffc0000000007fc07ffff8000000ffffffc000000003f8407ffffc000001ffffffc000000003c0007fffffffffffffffffc00000000300007fffffffffffffffffc00000000000007fffffffffffffffffc000000001fe007fffffffffffffffffc000000003fe007ffffffffdffffffffc00000000380007ffffffff8ffffffffc00000000300007ffffffff8ffffffffc00000000300007ffffffff8ffffffffc000000001fe007ffffffff8ffffffffc000000003fe007ffffffff8ffffffffc000000003fe007ffffffff8ffffffffc00000000300007ffffffff8ffffffffc00000000300007ffffffff8ffffffffc000000001fe007ffffffff8ffffffffc000000003fe007ffffffff8ffffffffc000000003fe007ffffffff8ffffffffc00000000000007ffffffff8ffffffffc00000000000007ffffffffdffffffffc00000000000007fffffffffffffffffc00000000000007fffffffffffffffffc00000000000007fffffffffffffffffc00000000000007fffffffffffffffffc000000001fc007fffffffffffffffffc000000003fc007ffff8ffffffffffffc0000000038e007ffff07f8ff8ffffffc00000000306007ffff07f07f07fffffc00000000306007ffff07f07f07fffffc0000000038e007ffff07f07f07fffffc000000001fe007ffff07f07f07fffffc000000001fc007ffff07f07f07fffffc00000000000007ffff07f07f07fffffc00000000000007ffff07f07f07fffffc00000003ffe007ffff07f07f07fffffc00000003ffe007ffff07f07f07fffffc00000003ffe007ffff07f07f07fffffc00000000000007ffff07f07f07fffffc00000000000007ffff07f07f07fffffc00000003ffe007ffff00000007fffffc00000003ffe007ffff0000000ffffffc00000003ffe007ffff0000000ffffffc00000000000007ffff0000001ffffffc00000000000007ffff8000007ffffffc000000001ec007fffffffffffffffffc000000003ee007fffffffffffffffffc00000000366007fffffffffc7ffffffc00000000366007fffffffff83ffffffc00000000366007fffffffff83ffffffc000000003ee007fffffffff81ffffffc000000001fc007fffffffffc1ffffffc000000000fc007fffffffffc1ffffffc00000000000007fffffffffc1ffffffc00000000000007fffffffffc1ffffffc00000001ffe007fffffffffe0ffffffc00000001ffe007fffffffffe0ffffffc00000001ffe007fffffffffe0ffffffc000000000c0007fffffffffe0ffffffc000000000c0007ffff8000000ffffffc000000000c0007ffff0000000ffffffc000000000c0007ffff0000000ffffffc00000001ffe007ffff0000001ffffffc00000001ffe007ffff8000003ffffffc00000001ffe007fffffffffffffffffc00000000000007fffffffffffffffffc00000000000007fffffffffffffffffc00000000000007ffffffffc3fffffffc00000000000007ffffffff80fffffffc00000000000007fffffc1f00fffffffc00000000000007fffff006007ffffffc00000000000007ffffe000003ffffffc00000000000007ffffc000183ffffffc00000000000007ffff8000381ffffffc00000000000007ffff81c03c1ffffffc00000000000007ffff83e07c1ffffffc00000000000007ffff07f07c1ffffffc00000000000007ffff07f07e0ffffffc00000000000007ffff07f07e0ffffffc00000000000007ffff07f07e0ffffffc00000000000007ffff07f07e0ffffffc00000000000007ffff0000000ffffffc00000000000007ffff0000000ffffffc00000000000007ffff0000000ffffffc00000000000007ffff8000000ffffffc00000000000007ffff8000001ffffffc00000000000007fffffffffffffffffc00000000000007fffffffffffffffffc00000000000007fffffffffffffffffc00000000000007fffffffffffffffffc00000000000007fffffffffffffffffc00000000000007fffffffffffffffffc00000000000007fffffffffffffffffc00000000000007fffffffffffffffffc00000000000007fffffffffffffffffc00000000000007fffffffffffffffffc00000000000007fffffffffffffffffc00000000000007fffffffffffffffffc00000000000007fffffffffffffffffc00000000000007fffffffffffffffffc00000000000007fffffffffffffffffc00000000000007fffffffffffffffffc00000000000007fffffffffffffffffc00000000000007fffffffffffffffffc00000000000007fffffffffffffffffc00000000000007fffffffffffffffffc00000000000007fffffffffffffffffc00000000000007fffffffffffffffffc00000000000007fffffffffffffffffc00000000000007fffffffffffffffffc00000000000007fffffffffffffffffc00000000000007fffffffffffffffffc00000000000007fffffffffffffffffc00000000000007fffffffffffffffffc00000000000007fffffffffffffffffc0000</textarea><br>
+
+	<div id="log">
+		<br>
+	</div>
+
+
+<bookmark-sidebar-35o3ptpft16 id="redeviation-bs-sidebar" class="notranslate" data-theme="default" data-pos="left"><template shadowrootmode="closed"><iframe style="margin:0;padding: 0;border: none;width: 100%;height: 100%;"></iframe></template></bookmark-sidebar-35o3ptpft16><div id="redeviation-bs-indicator" data-theme="default" class="redeviation-bs-fullHeight redeviation-bs-visible" data-pos="left" style="height: 100%; top: 0%;"><div><span></span></div></div></body><div class="xl-chrome-ext-bar_4DB361DE-01F7-4376-B494-639E489D19ED" id="xl_chrome_ext_4DB361DE-01F7-4376-B494-639E489D19ED" data-v-app="" style="display: block;"><div class=""><div id="xl_chrome_ext_video_tag_wrapper_4DB361DE-01F7-4376-B494-639E489D19ED" config="[object Object]" uiversion="v2" exception="false" latestvideosrc="" isshowvideotag="false" isshowdownloadbar="true" isshowcloudaddbar="false"><div class="_video_op_wrapper_96mx8_1" config="[object Object]" uiversion="v2" style="display: none;"><ul class="_video_op_list_96mx8_17"><li class="_op_item_96mx8_39 _download_96mx8_45"><span class="_op_icon_96mx8_25"></span><span class="_op_text_96mx8_31">下载</span></li><li class="_op_item_96mx8_39 _screen_96mx8_51"><span class="_op_icon_96mx8_25"></span><span class="_op_text_96mx8_31">投屏</span></li></ul></div></div><div class="badge_wrapper_4DB361DE-01F7-4376-B494-639E489D19ED _badge_wrapper_wnbzb_1" id="badge_wrapper_4DB361DE-01F7-4376-B494-639E489D19ED"><div class="_logo_wnbzb_24"></div><span class="_line_wnbzb_32"></span><div class="_text_wrapper_wnbzb_39"><span class="_download_icon_wnbzb_51"></span><span class="_text_wnbzb_39">高速下载</span></div></div><!----><!----><!----><!----><div class="_container_wq4mj_4"><!----></div></div></div><div id="__yetone-nextai-translator" style="z-index: 2147483647;"><template shadowrootmode="open"><div></div></template></div></html>
